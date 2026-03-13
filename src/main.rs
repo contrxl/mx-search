@@ -61,7 +61,7 @@ struct Config {
 impl Config {
     fn build(args: &[String]) -> Result<Config, &'static str> {
         if args.len() < 3 {
-            return Err("Not enough arguments!");
+            return Err("Not enough arguments!\n\nUsage: mx-search [single|multi] [url|path-to-file]\n\nExample (Single Mode): mx-search single google.com\nExample (Multi Mode): mx-search multi ./domains.txt");
         }
 
         let choice = &args[1].clone();
