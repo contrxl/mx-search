@@ -325,7 +325,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mx"
+name = "mx-search"
 version = "0.1.0"
 dependencies = [
  "trust-dns-resolver",
