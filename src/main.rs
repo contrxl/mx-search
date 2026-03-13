@@ -4,39 +4,44 @@ use std::env;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
+use std::process;
 
 fn main() {
     // Construct a new Resolver with default configuration options
     let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default()).unwrap();
 
     let args: Vec<String> = env::args().collect();
+
+    let config = Config::build(&args).unwrap_or_else(|err| {
+        println!("Problem parsing arguments: {err}");
+        process::exit(1);
+    });
     
-    let (choice, input) = parser(&args);
-    
-    if choice == "single" {
-        let mx_response = resolver.mx_lookup(input.trim());
+    if config.choice == "single" {
+         let mx_response = resolver.mx_lookup(config.input.trim());
 
         match mx_response {
-            Err(_) => println!("{} : No Records", input),
+            Err(_) => println!("{} : No Records", config.input),
             Ok(mx_response) => {
                 let addresses = mx_response.iter();
                 for record in addresses {
-                    println!("{} {} {}", input, record.preference(), record.exchange());
+                    println!("{} {} {}", config.input, record.preference(), record.exchange());
                 }
             }
         }
     }
 
-    if choice == "multi" {
-        println!("Path: {input}");
 
-        let contents = read_lines(input)
+    if config.choice == "multi" {
+        println!("Path: {}", config.input);
+
+        let contents = read_lines(config.input)
             .expect("Should have been able to read the file.");
         for content in contents.map_while(Result::ok) {
             let mx_response = resolver.mx_lookup(content.trim());
 
             match mx_response {
-                Err(_) => println!("{} : No Records", input),
+                Err(_) => println!("{} : No Records", content),
                 Ok(mx_response) => {
                     let addresses = mx_response.iter();
                     for record in addresses {
@@ -48,11 +53,22 @@ fn main() {
     }
 }
 
-fn parser(args: &[String]) -> (&str, &str){
-        let choice = &args[1];
-        let input  = &args[2];
+struct Config {
+    choice: String,
+    input: String,
+}
 
-        (choice, input)
+impl Config {
+    fn build(args: &[String]) -> Result<Config, &'static str> {
+        if args.len() < 3 {
+            return Err("Not enough arguments!");
+        }
+
+        let choice = &args[1].clone();
+        let input  = &args[2].clone();
+
+       Ok(Config { choice: choice.to_string(), input: input.to_string() })
+    }
 }
 
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
