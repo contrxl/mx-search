@@ -1,78 +1,83 @@
+use clap::{Parser, ValueEnum};
 use trust_dns_resolver::config::*;
 use trust_dns_resolver::Resolver;
-use std::env;
-use std::fs::File;
-use std::io::{self, BufRead};
 use std::path::Path;
-use std::process;
+use std::io::{self, BufRead};
+use std::fs::File;
 
-fn main() {
-    // Construct a new Resolver with default configuration options
-    let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default()).unwrap();
+// Struct to hold the three required arguments: mode (single|multi), input (URL or path to file)
+// and suppress (true or false).
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args{
+    /// The mode to run the program in.
+    #[arg(short, long)]
+    mode: Mode,
 
-    let args: Vec<String> = env::args().collect();
-
-    let config = Config::build(&args).unwrap_or_else(|err| {
-        println!("Problem parsing arguments: {err}");
-        process::exit(1);
-    });
-    
-    if config.choice == "single" {
-         let mx_response = resolver.mx_lookup(config.input.trim());
-
-        match mx_response {
-            Err(_) => println!("{} : No Records", config.input),
-            Ok(mx_response) => {
-                let addresses = mx_response.iter();
-                for record in addresses {
-                    println!("{} {} {}", config.input, record.preference(), record.exchange());
-                }
-            }
-        }
-    }
-
-
-    if config.choice == "multi" {
-        println!("Path: {}", config.input);
-
-        let contents = read_lines(config.input)
-            .expect("Should have been able to read the file.");
-        for content in contents.map_while(Result::ok) {
-            let mx_response = resolver.mx_lookup(content.trim());
-
-            match mx_response {
-                Err(_) => println!("{} : No Records", content),
-                Ok(mx_response) => {
-                    let addresses = mx_response.iter();
-                    for record in addresses {
-                        println!("{} {} {}", content, record.preference(), record.exchange());
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct Config {
-    choice: String,
+    /// URL or path to file.
+    #[arg(short, long)]
     input: String,
+
+    /// Suppress domains with no record. [default: false]
+    #[arg(short, long, default_value_t = false)]
+    suppress: bool,
 }
 
-impl Config {
-    fn build(args: &[String]) -> Result<Config, &'static str> {
-        if args.len() < 3 {
-            return Err("Not enough arguments!\n\nUsage: mx-search [single|multi] [url|path-to-file]\n\nExample (Single Mode): mx-search single google.com\nExample (Multi Mode): mx-search multi ./domains.txt");
+// Enum to define the two available modes.
+#[derive(ValueEnum, Clone, Debug)]
+enum Mode {
+    Single,
+    Multi,
+}
+
+// Main, create resolver for DNS, match statement to determine output based on the provided mode.
+// If the mode is single, call the print_mx function. If the mode is multi, call the print_mx
+// unction and enumerate through each line in the provided file.
+fn main() {
+    let args = Args::parse();
+
+    let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default())
+        .expect("Unable to create resolver...");
+  
+    match args.mode {
+        Mode::Single => {
+            print_mx(&resolver, args.input.trim(), args.suppress);
         }
 
-        let choice = &args[1].clone();
-        let input  = &args[2].clone();
+        Mode::Multi => {
+            eprintln!("Reading from: {}\n", args.input);
+            let lines = read_lines(&args.input)
+                .expect("Should have been able to read file...");
 
-       Ok(Config { choice: choice.to_string(), input: input.to_string() })
+            for line in lines.map_while(Result::ok) {
+                let domain = line.trim().to_string();
+                
+                print_mx(&resolver, &domain, args.suppress)
+            }
+        }
     }
 }
 
+// Function to read a file.
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
 where P: AsRef<Path>, {
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
+}
+
+// Function to print MX records. If the suppress argument is not provided, then show the domain and
+// "No Record.", if the argument is provided, show no output.
+fn print_mx(resolver: &Resolver, domain: &str, suppress: bool) {
+    match resolver.mx_lookup(domain) {
+        Err(_) => {
+            if !suppress {
+                println!("{} : No Record.", domain);
+            }
+        }
+        Ok(response) => {
+            for record in response.iter() {
+                println!("{} {} {}", domain, record.preference(), record.exchange())
+            }
+        }
+    }
 }
