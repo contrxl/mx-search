@@ -433,7 +433,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mx-search-clap"
+name = "mx-search"
 version = "0.2.0"
 dependencies = [
  "clap",
